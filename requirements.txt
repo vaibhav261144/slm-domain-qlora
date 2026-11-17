@@ -1,0 +1,40 @@
+# Core Deep Learning & Hugging Face Stack
+torch>=2.2.0
+transformers>=4.42.0
+peft>=0.11.0
+trl>=0.9.0
+bitsandbytes>=0.43.1
+datasets>=2.19.0
+accelerate>=0.30.0
+scipy>=1.11.0
+
+# Evaluation & Metrics
+evaluate>=0.4.1
+scikit-learn>=1.3.0
+rouge-score>=0.1.2
+bert-score>=0.3.13
+sacrebleu>=2.4.0
+jsonschema>=4.20.0
+
+# RAG Baseline
+sentence-transformers>=2.7.0
+faiss-cpu>=1.8.0
+
+# Serving & Web Demo
+fastapi>=0.110.0
+uvicorn>=0.29.0
+gradio>=4.31.0
+pydantic>=2.7.0
+
+# Experiment Tracking & Analysis
+wandb>=0.17.0
+pyyaml>=6.0.1
+pandas>=2.1.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Developer Tools & Testing
+pytest>=8.0.0
+tqdm>=4.66.0
+python-dotenv>=1.0.1

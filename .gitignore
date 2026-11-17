@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# PyTorch / Hugging Face checkpoints and models
+outputs/
+checkpoints/
+*.pt
+*.bin
+*.safetensors
+*.gguf
+model_cache/
+hf_cache/
+
+# Data files (keep samples, ignore massive raw/processed)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/splits/*
+!data/splits/.gitkeep
+
+# Weights & Biases / Experiment Tracking
+wandb/
+mlruns/
+.tensorboard/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+credentials.json
+token.txt

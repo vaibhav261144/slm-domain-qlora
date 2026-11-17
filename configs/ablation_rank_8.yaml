@@ -1,0 +1,47 @@
+# Ablation: LoRA Rank r = 8
+
+experiment:
+  name: "ablation-rank-8"
+  description: "LoRA rank r=8 ablation study"
+  seed: 42
+  tags: ["ablation", "rank-8"]
+
+model:
+  model_id: "Qwen/Qwen2.5-1.5B-Instruct"
+  torch_dtype: "bfloat16"
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "bfloat16"
+
+lora:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules: "all-linear"
+  task_type: "CAUSAL_LM"
+
+data:
+  train_file: "data/splits/train.jsonl"
+  val_file: "data/splits/val.jsonl"
+  test_file: "data/splits/test.jsonl"
+  max_seq_length: 1024
+  completion_only: true
+
+training:
+  output_dir: "outputs/ablation_rank_8"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 0.0002
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  gradient_checkpointing: true
+  logging_steps: 10
+  eval_strategy: "steps"
+  eval_steps: 100
+  save_steps: 100
+  report_to: "wandb"

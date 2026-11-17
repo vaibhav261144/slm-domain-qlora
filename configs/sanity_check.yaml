@@ -1,0 +1,48 @@
+# Sanity Check Configuration: Rapid overfit verification on small sample
+
+experiment:
+  name: "sanity-check-overfit"
+  description: "Sanity check on 50 samples to verify gradients and loss descent"
+  seed: 42
+  tags: ["sanity", "debug"]
+
+model:
+  model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+  torch_dtype: "float16"
+  trust_remote_code: false
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "float16"
+
+lora:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: "none"
+  target_modules: "all-linear"
+  task_type: "CAUSAL_LM"
+
+data:
+  train_file: "data/sample/domain_qa_sample.jsonl"
+  val_file: "data/sample/domain_qa_sample.jsonl"
+  test_file: "data/sample/domain_qa_sample.jsonl"
+  max_seq_length: 512
+  completion_only: true
+
+training:
+  output_dir: "outputs/sanity_check"
+  num_train_epochs: 10
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 0.0005
+  lr_scheduler_type: "constant"
+  warmup_ratio: 0.0
+  gradient_checkpointing: false
+  logging_steps: 1
+  eval_strategy: "no"
+  save_strategy: "no"
+  report_to: "none"
