@@ -21,7 +21,8 @@ def test_validate_chat_schema_valid():
 def test_validate_chat_schema_missing_assistant():
     entry = {
         "messages": [
-            {"role": "user", "content": "What is LoRA?"}
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is LoRA?"},
         ]
     }
     with pytest.raises(ValueError, match="at least one 'user' and one 'assistant'"):
