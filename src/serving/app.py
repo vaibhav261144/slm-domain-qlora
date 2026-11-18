@@ -1,8 +1,10 @@
 """
-Interactive Gradio Web Application for Hugging Face Spaces or local demo.
+Interactive Gradio Web Application for Hugging Face Spaces, Google Colab, or local demo.
 Compares base zero-shot model against the LoRA fine-tuned adapter side-by-side.
 """
 
+import argparse
+import inspect
 import os
 import time
 import gradio as gr
@@ -11,7 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
 BASE_MODEL_ID = os.getenv("BASE_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
-ADAPTER_PATH = os.getenv("ADAPTER_PATH", "outputs/run1/adapter")
+ADAPTER_PATH = os.getenv("ADAPTER_PATH", "outputs/qlora_run/adapter")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print(f"Loading tokenizer: {BASE_MODEL_ID}...")
@@ -45,7 +47,7 @@ def generate_single(model, prompt_text: str, system_msg: str, max_tokens: int, t
     messages.append({"role": "user", "content": prompt_text.strip()})
 
     formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(formatted, return_tensors="pt").to(DEVICE)
+    inputs = tokenizer(formatted, return_tensors="pt").to(model.device)
 
     t0 = time.perf_counter()
     with torch.no_grad():
@@ -55,6 +57,7 @@ def generate_single(model, prompt_text: str, system_msg: str, max_tokens: int, t
             do_sample=(temp > 0.0),
             temperature=temp if temp > 0.0 else None,
             pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
     latency = time.perf_counter() - t0
     new_tokens = out[0][inputs.input_ids.shape[1] :]
@@ -66,14 +69,20 @@ def compare_models(user_prompt: str, system_prompt: str, max_new_tokens: int, te
     if not user_prompt.strip():
         return "Please enter a prompt.", "", "Please enter a prompt.", ""
 
-    # Generate base model response
-    base_out, base_meta = generate_single(base_model, user_prompt, system_prompt, max_new_tokens, temperature)
-
-    # Generate tuned model response
     if tuned_model is not None:
-        tuned_out, tuned_meta = generate_single(tuned_model, user_prompt, system_prompt, max_new_tokens, temperature)
+        # Disable LoRA adapter temporarily for true zero-shot Base Model output
+        with tuned_model.disable_adapter():
+            base_out, base_meta = generate_single(
+                tuned_model, user_prompt, system_prompt, max_new_tokens, temperature
+            )
+        tuned_out, tuned_meta = generate_single(
+            tuned_model, user_prompt, system_prompt, max_new_tokens, temperature
+        )
     else:
-        tuned_out = "[Adapter not yet mounted/trained. Train a LoRA adapter first to view fine-tuned response.]"
+        base_out, base_meta = generate_single(
+            base_model, user_prompt, system_prompt, max_new_tokens, temperature
+        )
+        tuned_out = f"[Adapter not found at '{ADAPTER_PATH}'. Train a LoRA adapter first to view fine-tuned response.]"
         tuned_meta = "N/A"
 
     return base_out, base_meta, tuned_out, tuned_meta
@@ -84,39 +93,68 @@ demo_theme = gr.themes.Soft(
     neutral_hue="slate",
 )
 
-with gr.Blocks(theme=demo_theme, title="Small Language Model LoRA/QLoRA Demo") as demo:
+launch_params = inspect.signature(gr.Blocks.launch).parameters
+blocks_kwargs = {"title": "Small Language Model LoRA/QLoRA Demo"}
+launch_extra = {}
+if "theme" in launch_params:
+    launch_extra["theme"] = demo_theme
+else:
+    blocks_kwargs["theme"] = demo_theme
+
+with gr.Blocks(**blocks_kwargs) as demo:
     gr.Markdown("# 🔬 Fine-Tuning Small Language Models with LoRA / QLoRA")
     gr.Markdown(
-        "Evaluate the performance, response quality, and latency trade-offs between "
-        "an out-of-the-box base SLM and a domain-adapted LoRA/QLoRA model."
+        f"**Base Model:** `{BASE_MODEL_ID}` | **Adapter:** `{ADAPTER_PATH}` "
+        f"({'Loaded' if tuned_model is not None else 'Not Loaded'})\n\n"
+        "Compare response quality, formatting, and latency between the zero-shot Base SLM "
+        "and the QLoRA domain-adapted model side-by-side."
     )
 
     with gr.Row():
         with gr.Column(scale=2):
             prompt_input = gr.Textbox(
-                label="User Prompt / Task Input",
-                placeholder="Enter query, clinical text, or invoice to extract...",
+                label="User Prompt / Domain Question (English or Hindi)",
+                placeholder="Ask a question about government schemes, agriculture, or healthcare...",
                 lines=4,
             )
             system_input = gr.Textbox(
                 label="System Prompt (Optional)",
-                placeholder="You are an expert domain specialist...",
+                value="You are a helpful domain specialist providing accurate, concise answers.",
                 lines=2,
             )
             with gr.Row():
-                tokens_slider = gr.Slider(minimum=32, maximum=1024, value=256, step=32, label="Max New Tokens")
+                tokens_slider = gr.Slider(minimum=32, maximum=512, value=200, step=32, label="Max New Tokens")
                 temp_slider = gr.Slider(minimum=0.0, maximum=1.0, value=0.0, step=0.1, label="Temperature (0=Greedy)")
-            submit_btn = gr.Button("Compare Models", variant="primary")
+            submit_btn = gr.Button("Compare Base vs. QLoRA", variant="primary")
+
+    gr.Examples(
+        examples=[
+            [
+                "What is the total annual payment and installment schedule under the PM-KISAN scheme?",
+                "You are a public service advisor on Indian government schemes.",
+            ],
+            [
+                "गेहूं में पीले रतुए के लक्षण क्या हैं और इसके नियंत्रण के लिए किस दवा का छिड़काव करें?",
+                "आप भारतीय कृषि अनुसंधान परिषद (ICAR) के पादप रोग विशेषज्ञ हैं।",
+            ],
+            [
+                "What is the financial coverage provided per family under Ayushman Bharat PM-JAY and who qualifies?",
+                "You are a healthcare policy specialist for public health schemes.",
+            ],
+        ],
+        inputs=[prompt_input, system_input],
+        label="Try Bilingual Sample Queries",
+    )
 
     with gr.Row():
         with gr.Column():
-            gr.Markdown("### 🏛️ Base Model (Zero-Shot / Prompted)")
-            base_output = gr.Textbox(label="Output", lines=8)
+            gr.Markdown("### 🏛️ Base Model (Zero-Shot)")
+            base_output = gr.Textbox(label="Base Model Output", lines=8)
             base_stat = gr.Label(label="Latency & Token Count")
 
         with gr.Column():
-            gr.Markdown("### ⚡ Fine-Tuned Model (LoRA / QLoRA)")
-            tuned_output = gr.Textbox(label="Output", lines=8)
+            gr.Markdown("### ⚡ Fine-Tuned Model (QLoRA Adapter)")
+            tuned_output = gr.Textbox(label="Fine-Tuned Output", lines=8)
             tuned_stat = gr.Label(label="Latency & Token Count")
 
     submit_btn.click(
@@ -127,4 +165,13 @@ with gr.Blocks(theme=demo_theme, title="Small Language Model LoRA/QLoRA Demo") a
 
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    parser = argparse.ArgumentParser(description="Launch Gradio Comparison Demo")
+    parser.add_argument("--share", action="store_true", help="Create a public gradio.live link (required for Colab)")
+    parser.add_argument("--port", type=int, default=7860, help="Server port")
+    args = parser.parse_args()
+
+    # Auto-enable share=True on Google Colab or if --share / GRADIO_SHARE=1 is set
+    in_colab = "COLAB_GPU" in os.environ or "COLAB_RELEASE_TAG" in os.environ
+    use_share = args.share or in_colab or os.getenv("GRADIO_SHARE", "0") == "1"
+
+    demo.launch(server_name="0.0.0.0", server_port=args.port, share=use_share, **launch_extra)
