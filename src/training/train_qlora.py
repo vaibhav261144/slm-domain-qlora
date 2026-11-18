@@ -184,6 +184,22 @@ def train(config_path: str):
 
     trainer = SFTTrainer(**trainer_kwargs)
 
+    # TRL's SFTTrainer.__init__ casts trainable parameters of 4-bit/8-bit models to bfloat16.
+    # On non-BF16 GPUs (e.g., Tesla T4 CC 7.5) with fp16=True, PyTorch GradScaler requires
+    # trainable weights to be float32. Re-cast trainer.model AFTER SFTTrainer initialization.
+    if torch_dtype == torch.float16:
+        for param in trainer.model.parameters():
+            if param.requires_grad and param.dtype != torch.float32:
+                param.data = param.data.to(torch.float32)
+            elif not param.requires_grad and param.dtype == torch.bfloat16:
+                param.data = param.data.to(torch.float32 if param.ndim == 1 else torch.float16)
+        for buf in trainer.model.buffers():
+            if buf.dtype == torch.bfloat16:
+                buf.data = buf.data.to(torch.float32)
+
+    post_dtypes = {p.dtype for p in trainer.model.parameters() if p.requires_grad}
+    print(f"Post-SFTTrainer trainable parameter dtypes: {post_dtypes}")
+
     # 10. Train
     print("Beginning model training...")
     train_result = trainer.train()
