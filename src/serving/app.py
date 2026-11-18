@@ -19,12 +19,12 @@ tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
 
 print(f"Loading base model: {BASE_MODEL_ID}...")
 base_model = AutoModelForCausalLM.from_pretrained(
     BASE_MODEL_ID,
-    torch_dtype=dtype if DEVICE == "cuda" else torch.float32,
+    dtype=dtype if DEVICE == "cuda" else torch.float32,
     device_map="auto" if DEVICE == "cuda" else None,
 )
 base_model.eval()

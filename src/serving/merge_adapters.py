@@ -20,11 +20,11 @@ def merge_lora_to_standalone(
     hub_model_id: str = None,
 ):
     print(f"Loading 16-bit base model: {base_model_id}")
-    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
     
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_id,
-        torch_dtype=dtype,
+        dtype=dtype,
         device_map="auto" if torch.cuda.is_available() else "cpu",
         low_cpu_mem_usage=True,
     )

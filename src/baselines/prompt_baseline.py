@@ -23,13 +23,13 @@ class PromptBaselineRunner:
 
         dtype = torch_dtype or (
             torch.bfloat16
-            if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+            if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
             else torch.float16
         )
 
         self.model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            torch_dtype=dtype if self.device == "cuda" else torch.float32,
+            dtype=dtype if self.device == "cuda" else torch.float32,
             device_map="auto" if self.device == "cuda" else None,
         )
         self.model.eval()

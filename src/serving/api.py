@@ -54,10 +54,10 @@ def startup_event():
     if TOKENIZER.pad_token is None:
         TOKENIZER.pad_token = TOKENIZER.eos_token
 
-    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
     MODEL = AutoModelForCausalLM.from_pretrained(
         base_model_id,
-        torch_dtype=dtype if DEVICE == "cuda" else torch.float32,
+        dtype=dtype if DEVICE == "cuda" else torch.float32,
         device_map="auto" if DEVICE == "cuda" else None,
     )
 

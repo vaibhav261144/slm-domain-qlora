@@ -22,6 +22,7 @@ from src.data.dataset_loader import load_jsonl_dataset
 from src.training.utils import (
     set_seed,
     load_yaml_config,
+    resolve_torch_dtype,
     get_quantization_config,
     get_lora_config,
     log_trainable_parameters,
@@ -64,7 +65,9 @@ def train(config_path: str):
         print("Running in full precision or without 4-bit bitsandbytes.")
 
     # 5. Load Base Model
-    torch_dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+    requested_dtype = cfg["model"].get("torch_dtype", "bfloat16")
+    torch_dtype = resolve_torch_dtype(requested_dtype)
+    print(f"Resolved compute dtype: {torch_dtype} (requested: {requested_dtype})")
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=bnb_config,

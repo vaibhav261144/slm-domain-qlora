@@ -32,21 +32,32 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
     return config
 
 
+def supports_native_bf16() -> bool:
+    """
+    Returns True only on CUDA GPUs with native hardware BF16 (Ampere SM 8.0+).
+    Avoids PyTorch's is_bf16_supported() returning True via software emulation on Turing/T4 (SM 7.5).
+    """
+    return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
+
+
+def resolve_torch_dtype(dtype_str: str = "bfloat16") -> torch.dtype:
+    """Resolves requested dtype safely for the current GPU hardware."""
+    if not torch.cuda.is_available():
+        return torch.float32
+    if dtype_str == "bfloat16":
+        if supports_native_bf16():
+            return torch.bfloat16
+        return torch.float16
+    if dtype_str == "float16":
+        return torch.float16
+    return torch.float32
+
+
 def get_quantization_config(config: Dict[str, Any]) -> BitsAndBytesConfig:
     """Constructs a BitsAndBytesConfig from dictionary."""
     q_cfg = config.get("quantization", {})
     compute_dtype_str = q_cfg.get("bnb_4bit_compute_dtype", "bfloat16")
-    
-    # Check GPU compute capability: if Ampere or later (CC >= 8.0), bf16 is supported
-    if compute_dtype_str == "bfloat16":
-        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-            compute_dtype = torch.bfloat16
-        else:
-            compute_dtype = torch.float16
-    elif compute_dtype_str == "float16":
-        compute_dtype = torch.float16
-    else:
-        compute_dtype = torch.float32
+    compute_dtype = resolve_torch_dtype(compute_dtype_str)
 
     return BitsAndBytesConfig(
         load_in_4bit=q_cfg.get("load_in_4bit", True),

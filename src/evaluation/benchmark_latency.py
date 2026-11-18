@@ -24,10 +24,10 @@ def benchmark_inference_efficiency(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+    dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
     model = AutoModelForCausalLM.from_pretrained(
         base_model_id,
-        torch_dtype=dtype if device == "cuda" else torch.float32,
+        dtype=dtype if device == "cuda" else torch.float32,
         device_map="auto" if device == "cuda" else None,
     )
     if adapter_path:
