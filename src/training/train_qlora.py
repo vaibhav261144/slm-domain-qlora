@@ -85,6 +85,21 @@ def train(config_path: str):
     # 6. Apply LoRA Adapter
     lora_config = get_lora_config(cfg)
     model = get_peft_model(model, lora_config)
+
+    # On non-BF16 GPUs (e.g., Tesla T4 CC 7.5), ensure zero BFloat16 tensors remain
+    # and all trainable LoRA weights are FP32 (required by PyTorch AMP GradScaler for fp16=True).
+    if torch_dtype == torch.float16:
+        for param in model.parameters():
+            if param.requires_grad:
+                param.data = param.data.to(torch.float32)
+            elif param.dtype == torch.bfloat16:
+                param.data = param.data.to(torch.float32 if param.ndim == 1 else torch.float16)
+        for buf in model.buffers():
+            if buf.dtype == torch.bfloat16:
+                buf.data = buf.data.to(torch.float32)
+
+    trainable_dtypes = {p.dtype for p in model.parameters() if p.requires_grad}
+    print(f"Trainable parameter dtypes: {trainable_dtypes}")
     log_trainable_parameters(model)
 
     # 7. Load Datasets
