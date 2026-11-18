@@ -8,17 +8,19 @@ import argparse
 import inspect
 import os
 import time
-import gradio as gr
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
 
+# IMPORTANT: On Hugging Face ZeroGPU, `spaces` MUST be imported before `torch` or any CUDA library.
 try:
     import spaces
     IS_ZEROGPU = True
 except ImportError:
     spaces = None
     IS_ZEROGPU = False
+
+import gradio as gr
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 
 BASE_MODEL_ID = os.getenv("BASE_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
 ADAPTER_PATH = os.getenv("ADAPTER_PATH", "outputs/qlora_run/adapter")
