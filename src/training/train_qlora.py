@@ -4,6 +4,7 @@ Supports config-driven experiments, 4-bit NF4 quantization, and chat template fo
 """
 
 import argparse
+import inspect
 import os
 import sys
 import torch
@@ -68,7 +69,7 @@ def train(config_path: str):
         model_id,
         quantization_config=bnb_config,
         device_map="auto" if device == "cuda" else None,
-        torch_dtype=torch_dtype,
+        dtype=torch_dtype,
         trust_remote_code=cfg["model"].get("trust_remote_code", False),
     )
 
@@ -92,12 +93,17 @@ def train(config_path: str):
     if val_dataset:
         print(f"Loaded {len(val_dataset)} validation examples.")
 
-    # 8. Setup SFTConfig
+    # 8. Setup SFTConfig (compatible across Transformers 4.x/5.x & TRL versions)
     train_args = cfg["training"]
     output_dir = train_args.get("output_dir", "outputs/run")
     os.makedirs(output_dir, exist_ok=True)
 
-    sft_config = SFTConfig(
+    sft_init_params = inspect.signature(SFTConfig.__init__).parameters
+    max_len = data_cfg.get("max_seq_length", 1024)
+    eval_strategy = train_args.get("eval_strategy", "steps") if val_dataset else "no"
+    warmup_val = float(train_args.get("warmup_ratio", 0.03))
+
+    sft_kwargs = dict(
         output_dir=output_dir,
         num_train_epochs=train_args.get("num_train_epochs", 3),
         per_device_train_batch_size=train_args.get("per_device_train_batch_size", 4),
@@ -105,11 +111,10 @@ def train(config_path: str):
         gradient_accumulation_steps=train_args.get("gradient_accumulation_steps", 4),
         learning_rate=float(train_args.get("learning_rate", 2e-4)),
         lr_scheduler_type=train_args.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=train_args.get("warmup_ratio", 0.03),
         weight_decay=train_args.get("weight_decay", 0.01),
         gradient_checkpointing=train_args.get("gradient_checkpointing", True),
+        optim="paged_adamw_8bit" if bnb_config is not None else "adamw_torch",
         logging_steps=train_args.get("logging_steps", 10),
-        eval_strategy=train_args.get("eval_strategy", "steps") if val_dataset else "no",
         eval_steps=train_args.get("eval_steps", 100),
         save_strategy=train_args.get("save_strategy", "steps"),
         save_steps=train_args.get("save_steps", 100),
@@ -117,20 +122,49 @@ def train(config_path: str):
         seed=seed,
         fp16=(torch_dtype == torch.float16 and device == "cuda"),
         bf16=(torch_dtype == torch.bfloat16 and device == "cuda"),
-        max_seq_length=data_cfg.get("max_seq_length", 1024),
         report_to=train_args.get("report_to", "none"),
     )
 
+    # Handle eval_strategy vs evaluation_strategy
+    if "eval_strategy" in sft_init_params:
+        sft_kwargs["eval_strategy"] = eval_strategy
+    elif "evaluation_strategy" in sft_init_params:
+        sft_kwargs["evaluation_strategy"] = eval_strategy
+
+    # Handle warmup_ratio (Transformers 4.x) vs float warmup_steps (Transformers 5.x)
+    if "warmup_ratio" in sft_init_params:
+        sft_kwargs["warmup_ratio"] = warmup_val
+    elif "warmup_steps" in sft_init_params:
+        sft_kwargs["warmup_steps"] = warmup_val
+
+    # Handle max_length vs max_seq_length across TRL releases
+    if "max_length" in sft_init_params:
+        sft_kwargs["max_length"] = max_len
+    elif "max_seq_length" in sft_init_params:
+        sft_kwargs["max_seq_length"] = max_len
+
+    # Filter out any unsupported kwargs cleanly if SFTConfig doesn't accept **kwargs
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sft_init_params.values())
+    if not has_var_kw:
+        sft_kwargs = {k: v for k, v in sft_kwargs.items() if k in sft_init_params}
+
+    sft_config = SFTConfig(**sft_kwargs)
+
     # 9. Initialize SFTTrainer
-    # Passing processing_class=tokenizer ensures native chat template tokenization
-    trainer = SFTTrainer(
+    # Model is already wrapped via get_peft_model above, so peft_config is omitted here.
+    trainer_init_params = inspect.signature(SFTTrainer.__init__).parameters
+    trainer_kwargs = dict(
         model=model,
         args=sft_config,
         train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        peft_config=lora_config,
-        processing_class=tokenizer,
+        eval_dataset=val_dataset if eval_strategy != "no" else None,
     )
+    if "processing_class" in trainer_init_params:
+        trainer_kwargs["processing_class"] = tokenizer
+    elif "tokenizer" in trainer_init_params:
+        trainer_kwargs["tokenizer"] = tokenizer
+
+    trainer = SFTTrainer(**trainer_kwargs)
 
     # 10. Train
     print("Beginning model training...")
