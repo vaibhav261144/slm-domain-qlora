@@ -41,10 +41,19 @@ def split_dataset(
         train_records, val_records, test_records = [], [], []
         current_train_count = 0
         current_val_count = 0
+        n_groups = len(group_keys)
 
-        for gk in group_keys:
+        for idx, gk in enumerate(group_keys):
             items = groups[gk]
-            if current_train_count < train_target:
+            remaining = n_groups - idx
+
+            # Reserve final groups so val and test are never starved on small datasets
+            if test_ratio > 0 and not test_records and remaining == 1:
+                test_records.extend(items)
+            elif val_ratio > 0 and not val_records and remaining <= (2 if test_ratio > 0 and not test_records else 1):
+                val_records.extend(items)
+                current_val_count += len(items)
+            elif current_train_count < train_target:
                 train_records.extend(items)
                 current_train_count += len(items)
             elif current_val_count < val_target:
